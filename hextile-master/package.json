@@ -1,0 +1,45 @@
+{
+  "name": "hextile",
+  "version": "1.1.1",
+  "description": "Generate tile representations of polygon objects on map",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "rm -rf dist && mkdir dist && babel src --out-dir dist",
+    "prepublish": "npm run test && npm run build",
+    "test": "standard"
+  },
+  "bin": {
+    "hextile": "bin/hextile.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/datagovsg/hextile.git"
+  },
+  "keywords": [
+    "geospatial",
+    "polygon",
+    "tiles",
+    "choropleth"
+  ],
+  "author": "Yong Jun",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/datagovsg/hextile/issues"
+  },
+  "homepage": "https://github.com/datagovsg/hextile#readme",
+  "dependencies": {
+    "lodash": "^4.17.4"
+  },
+  "devDependencies": {
+    "babel-cli": "^6.18.0",
+    "babel-preset-es2015": "^6.18.0",
+    "babel-preset-stage-3": "^6.17.0",
+    "standard": "^8.6.0"
+  },
+  "babel": {
+    "presets": [
+      "es2015",
+      "stage-3"
+    ]
+  }
+}
