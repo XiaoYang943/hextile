@@ -368,7 +368,8 @@ function hextile (geojson, options = {}) {
         })
       }
     }
-  } else if (options.shape === 'hexagon') {
+  }
+  else if (options.shape === 'hexagon') {
     const beta0 = polar2cartesian(options.rotationAngle)
     const beta1 = polar2cartesian(options.rotationAngle + 60)
     const beta2 = polar2cartesian(options.rotationAngle + 120)
