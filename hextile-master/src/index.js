@@ -2,6 +2,8 @@
 // import max from 'lodash/max'
 const fs = require('fs');
 
+// normalize geojson input
+let input = []
 /**
  * 等距投影
  * @param center 整个渔网的中心点的经纬度坐标(单位：度、角度)
@@ -194,8 +196,23 @@ fs.writeFile('C:\\Users\\heyiyang\\Desktop\\data.geojson', JSON.stringify(featur
     console.log('JSON数据已成功写入文件');
   }
 });
-
-
+// 入参是geojson形式的bbox
+function extractPolygons (node) {
+  if (typeof node !== 'object') return
+  if (node instanceof Array) {
+    node.forEach(extractPolygons)
+  } else if (node.type === 'Polygon') {
+    input.push(node.coordinates)
+  } else if (node.type === 'MultiPolygon') {
+    input.push(...node.coordinates)
+  } else if (node.type === 'Feature') {
+    extractPolygons(node.geometry)
+  } else if (node.type === 'GeometryCollection') {
+    node.geometries.forEach(extractPolygons)
+  } else if (node.type === 'FeatureCollection') {
+    node.features.forEach(extractPolygons)
+  }
+}
 function hextile (geojson, options = {}) {
   // 入参是二维数组形式的bbox
   if (
@@ -206,29 +223,13 @@ function hextile (geojson, options = {}) {
     geojson = bbox2geojson(geojson)
   }
 
-  // normalize geojson input
-  let input = []
-
-  // 入参是geojson形式的bbox
-  function extractPolygons (node) {
-    if (typeof node !== 'object') return
-    if (node instanceof Array) {
-      node.forEach(extractPolygons)
-    } else if (node.type === 'Polygon') {
-      input.push(node.coordinates)
-    } else if (node.type === 'MultiPolygon') {
-      input.push(...node.coordinates)
-    } else if (node.type === 'Feature') {
-      extractPolygons(node.geometry)
-    } else if (node.type === 'GeometryCollection') {
-      node.geometries.forEach(extractPolygons)
-    } else if (node.type === 'FeatureCollection') {
-      node.features.forEach(extractPolygons)
-    }
-  }
-
   extractPolygons(geojson)
 
+  /**
+   * [[[[108.620282,34.283929],[108.620282,34.37588],[108.759048,34.37588],[108.759048,34.283929],[108.620282,34.283929]]]]
+   * =>
+   * [{"coordinates":[[[108.620282,34.283929],[108.620282,34.37588],[108.759048,34.37588],[108.759048,34.283929],[108.620282,34.283929]]],"bbox":[108.620282,34.283929,108.759048,34.37588]}]
+   */
   input = input.map(coordinates => ({
     coordinates,
     bbox: [
@@ -238,8 +239,10 @@ function hextile (geojson, options = {}) {
       max(coordinates[0].map(point => point[1]))
     ]
   }))
-
   // global bbox
+  /**
+   * [108.620282,34.283929,108.759048,34.37588]
+   */
   const bbox = [
     min(input.map(polygon => polygon.bbox[0])),
     min(input.map(polygon => polygon.bbox[1])),
