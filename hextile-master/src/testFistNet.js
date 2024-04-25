@@ -23,13 +23,13 @@ let data1 = {
 }
 
 let fishNet = new FishNet(data1)
-
+// let fishNet = new FishNet([108.620282,34.283929,108.759048,34.37588])
 let featureCollection = {
   "type": "FeatureCollection",
   "features":[]
 }
 
-featureCollection.features = [...fishNet.getFishNet()]
+featureCollection.features = [...fishNet.getFishNet(),...data1.features]
 
 fs.writeFile('C:\\Users\\heyiyang\\Desktop\\data.geojson', JSON.stringify(featureCollection), 'utf8', (err) => {
   if (err) {

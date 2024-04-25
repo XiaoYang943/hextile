@@ -183,7 +183,7 @@ let featureCollection = {
 // bbox data1
 featureCollection.features = [...hextile(data1,{
   // shape:'hexagon'
-})]
+}),...data1.features]
 // featureCollection.features = [...hextile(bbox,{
 //   // shape:'hexagon'
 // }),...bbox.features]

@@ -1,32 +1,33 @@
 class FishNet {
   constructor (inputData,options) {
     this.options = options || {};
-    this.data = [];
+    this.tempData = [];
     this.processData(inputData);
     this.fishNetData = [];
     this.updateOptions();
     this.step = this.options.shape === 'hexagon' ? Math.sqrt(2) / 4 : 1
-    this.corners = [
-      this.options.projection.lonLat2cartesian([this.bbox[0], this.bbox[1]]),
-      this.options.projection.lonLat2cartesian([this.bbox[2], this.bbox[3]]),
-      this.options.projection.lonLat2cartesian([this.bbox[0], this.bbox[3]]),
-      this.options.projection.lonLat2cartesian([this.bbox[2], this.bbox[1]])
+    this.bboxCartesian = [
+      this.options.projection.lonLat2cartesian([this.bbox[0], this.bbox[1]]), // 左下角
+      this.options.projection.lonLat2cartesian([this.bbox[2], this.bbox[3]]), // 右上角
+      this.options.projection.lonLat2cartesian([this.bbox[0], this.bbox[3]]), // 左上角
+      this.options.projection.lonLat2cartesian([this.bbox[2], this.bbox[1]])  // 右下角
     ]
     this.grid = {}
     this.calFishNet();
   }
   polar2cartesian (theta) {
+    let radian = theta / 180 * Math.PI; // 角度转弧度
     return [
-      Math.sin(theta / 180 * Math.PI),
-      -Math.cos(theta / 180 * Math.PI)
+      Math.sin(radian),
+      -Math.cos(radian)
     ]
   }
   dotProduct (v1, v2) {
     return v1.reduce((sum, e, i) => sum + e * v2[i], 0)
   }
   /*
-    given this.grid orientation (beta) and a set of potential endpoints,
-    find min and max this.grid number (not inclusive of extreme values)
+    input:这个网格方向（beta）和一组潜在的端点，
+    output:最小值和最大值this.grid数（不包括极值）
   */
   dRange (beta, endpoints) {
     const dValues = endpoints.map(ep => this.dotProduct(beta, ep))
@@ -36,7 +37,7 @@ class FishNet {
     }
   }
   linearSolver ([alpha1, beta1], [alpha2, beta2]) {
-    const DET = alpha1 * beta2 - alpha2 * beta1
+    const DET = alpha1 * beta2 - alpha2 * beta1 // x1y2 - x2y1
     return function (d1, d2) {
       return [
         (beta2 * d1 - beta1 * d2) / DET,
@@ -46,12 +47,13 @@ class FishNet {
   }
   calFishNet() {
     if (this.options.shape === 'square') {
-      const beta0 = this.polar2cartesian(this.options.rotationAngle)
-      const beta1 = this.polar2cartesian(this.options.rotationAngle + 90)
-
-      const dRange0 = this.dRange(beta0, this.corners)
-      const dRange1 = this.dRange(beta1, this.corners)
-
+      const beta0 = this.polar2cartesian(this.options.rotationAngle)  // [ 0, -1 ]
+      const beta1 = this.polar2cartesian(this.options.rotationAngle + 90) // [ 1, 0 ]
+      console.log(this.bboxCartesian)
+      const dRange0 = this.dRange(beta0, this.bboxCartesian)
+      const dRange1 = this.dRange(beta1, this.bboxCartesian)
+      console.log(dRange0)
+      console.log(dRange1)
       // 枚举所有潜在的网格单元
       for (let i = dRange0.min - 1; i <= dRange0.max + 1; i++) {
         this.grid[i] = {}
@@ -59,47 +61,54 @@ class FishNet {
           this.grid[i][j] = {}
         }
       }
-      this.data.forEach(polygon => {
-        polygon.coordinates.forEach(linearRing => {
-          linearRing = linearRing.map(this.options.projection.lonLat2cartesian)
-          for (let n = 0; n < linearRing.length - 1; n++) {
-            /*
-              If a line segment of the input polygon cuts a this.grid line,
-              label the cell directly above and below the point
-              where the line segment cuts the this.grid line 'keep'.
-              This traces out the this.grid cells lying on the edge of the input polygon
-              如果输入多边形的线段切割网格线，
-              在点的正上方和正下方标记单元格
-              其中线段切割网格线'keep'
-              这会追踪出位于输入多边形边缘的网格单元
-            */
-            const beta = [
-              linearRing[n + 1][1] - linearRing[n][1],
-              linearRing[n][0] - linearRing[n + 1][0]
-            ]
-            const d = linearRing[n][0] * linearRing[n + 1][1] -
-              linearRing[n][1] * linearRing[n + 1][0]
+      if(this.options.isCreateEdgeGrid) {
+        this.tempData.forEach(polygon => {
+          polygon.coordinates.forEach(linearRing => {
+            linearRing = linearRing.map(this.options.projection.lonLat2cartesian)
+            for (let n = 0; n < linearRing.length - 1; n++) {
+              /*
+                If a line segment of the input polygon cuts a this.grid line,
+                label the cell directly above and below the point
+                where the line segment cuts the this.grid line 'keep'.
+                This traces out the this.grid cells lying on the edge of the input polygon
+                如果输入多边形的线段切割网格线，
+                在点的正上方和正下方标记单元格
+                其中线段切割网格线'keep'
+                这会追踪出位于输入多边形边缘的网格单元
+              */
+              const beta = [
+                linearRing[n + 1][1] - linearRing[n][1],
+                linearRing[n][0] - linearRing[n + 1][0]
+              ]
+              const d = linearRing[n][0] * linearRing[n + 1][1] -
+                linearRing[n][1] * linearRing[n + 1][0]
 
-            const iRange = this.dRange(beta0, [linearRing[n], linearRing[n + 1]])
-            const iIntersection = this.linearSolver(beta0, beta)
-            for (let i = iRange.min; i <= iRange.max; i++) {
-              const intersection = iIntersection(i, d)
-              const j = Math.floor(this.dotProduct(beta1, intersection))
-              this.grid[i][j].keep = true
-              this.grid[i - 1][j].keep = true
-            }
+              const iRange = this.dRange(beta0, [linearRing[n], linearRing[n + 1]])
+              console.log("beta0",beta0)
+              console.log("beta",beta)
 
-            const jRange = this.dRange(beta1, [linearRing[n], linearRing[n + 1]])
-            const jIntersection = this.linearSolver(beta1, beta)
-            for (let j = jRange.min; j <= jRange.max; j++) {
-              const intersection = jIntersection(j, d)
-              const i = Math.floor(this.dotProduct(beta0, intersection))
-              this.grid[i][j].keep = true
-              this.grid[i][j - 1].keep = true
+              const iIntersection = this.linearSolver(beta0, beta)
+
+              for (let i = iRange.min; i <= iRange.max; i++) {
+                const intersection = iIntersection(i, d)
+                const j = Math.floor(this.dotProduct(beta1, intersection))
+                this.grid[i][j].keep = true
+                this.grid[i - 1][j].keep = true
+              }
+
+              const jRange = this.dRange(beta1, [linearRing[n], linearRing[n + 1]])
+              const jIntersection = this.linearSolver(beta1, beta)
+              for (let j = jRange.min; j <= jRange.max; j++) {
+                const intersection = jIntersection(j, d)
+                const i = Math.floor(this.dotProduct(beta0, intersection))
+                this.grid[i][j].keep = true
+                this.grid[i][j - 1].keep = true
+              }
             }
-          }
+          })
         })
-      })
+      }
+
 
       // translate this.grid cells into output polygons 将网格单元转换为输出多边形
       const getIntersection = this.linearSolver(beta0, beta1)
@@ -133,8 +142,8 @@ class FishNet {
       const beta0 = this.polar2cartesian(this.options.rotationAngle)
       const beta1 = this.polar2cartesian(this.options.rotationAngle + 60)
       const beta2 = this.polar2cartesian(this.options.rotationAngle + 120)
-      const dRange0 = this.dRange(beta0, this.corners)
-      const dRange1 = this.dRange(beta1, this.corners)
+      const dRange0 = this.dRange(beta0, this.bboxCartesian)
+      const dRange1 = this.dRange(beta1, this.bboxCartesian)
 
       for (let i = dRange0.min - 2; i <= dRange0.max + 2; i++) {
         this.grid[i] = {}
@@ -146,65 +155,67 @@ class FishNet {
         }
       }
 
-      this.data.forEach(polygon => {
-        polygon.coordinates.forEach(linearRing => {
-          linearRing = linearRing.map(this.options.projection.lonLat2cartesian)
-          for (let n = 0; n < linearRing.length - 1; n++) {
-            // similar logic as above
-            const beta = [
-              linearRing[n + 1][1] - linearRing[n][1],
-              linearRing[n][0] - linearRing[n + 1][0]
-            ]
-            const d = linearRing[n][0] * linearRing[n + 1][1] -
-              linearRing[n][1] * linearRing[n + 1][0]
+      if(this.options.isCreateEdgeGrid) {
+        this.tempData.forEach(polygon => {
+          polygon.coordinates.forEach(linearRing => {
+            linearRing = linearRing.map(this.options.projection.lonLat2cartesian)
+            for (let n = 0; n < linearRing.length - 1; n++) {
+              // similar logic as above
+              const beta = [
+                linearRing[n + 1][1] - linearRing[n][1],
+                linearRing[n][0] - linearRing[n + 1][0]
+              ]
+              const d = linearRing[n][0] * linearRing[n + 1][1] -
+                linearRing[n][1] * linearRing[n + 1][0]
 
-            const iRange = this.dRange(beta0, [linearRing[n], linearRing[n + 1]])
-            const iIntersection =this. linearSolver(beta0, beta)
-            for (let i = iRange.min; i <= iRange.max; i++) {
-              const intersection = iIntersection(i * this.step, d)
-              const j = Math.floor(this.dotProduct(beta1, intersection) / this.step)
-              const k = Math.floor(this.dotProduct(beta2, intersection) / this.step)
-              if (i - j + k === 1 || i - j + k === -1) {
-                this.grid[i][j][k].keep = true
-                this.grid[i][j + 1][k + 1].keep = true
-              } else {
-                this.grid[i][j + 1][k].keep = true
-                this.grid[i][j][k + 1].keep = true
+              const iRange = this.dRange(beta0, [linearRing[n], linearRing[n + 1]])
+              const iIntersection =this. linearSolver(beta0, beta)
+              for (let i = iRange.min; i <= iRange.max; i++) {
+                const intersection = iIntersection(i * this.step, d)
+                const j = Math.floor(this.dotProduct(beta1, intersection) / this.step)
+                const k = Math.floor(this.dotProduct(beta2, intersection) / this.step)
+                if (i - j + k === 1 || i - j + k === -1) {
+                  this.grid[i][j][k].keep = true
+                  this.grid[i][j + 1][k + 1].keep = true
+                } else {
+                  this.grid[i][j + 1][k].keep = true
+                  this.grid[i][j][k + 1].keep = true
+                }
+              }
+
+              const jRange = this.dRange(beta1, [linearRing[n], linearRing[n + 1]])
+              const jIntersection = this.linearSolver(beta1, beta)
+              for (let j = jRange.min; j <= jRange.max; j++) {
+                const intersection = jIntersection(j * this.step, d)
+                const i = Math.floor(this.dotProduct(beta0, intersection) / this.step)
+                const k = Math.floor(this.dotProduct(beta2, intersection) / this.step)
+                if (i - j + k === 1 || i - j + k === -1) {
+                  this.grid[i][j][k].keep = true
+                  this.grid[i + 1][j][k + 1].keep = true
+                } else {
+                  this.grid[i + 1][j][k].keep = true
+                  this.grid[i][j][k + 1].keep = true
+                }
+              }
+
+              const kRange = this.dRange(beta2, [linearRing[n], linearRing[n + 1]])
+              const kIntersection = this.linearSolver(beta2, beta)
+              for (let k = kRange.min; k <= kRange.max; k++) {
+                const intersection = kIntersection(k * this.step, d)
+                const i = Math.floor(this.dotProduct(beta0, intersection) / this.step)
+                const j = Math.floor(this.dotProduct(beta1, intersection) / this.step)
+                if (i - j + k === 1 || i - j + k === -1) {
+                  this.grid[i][j][k].keep = true
+                  this.grid[i + 1][j + 1][k].keep = true
+                } else {
+                  this.grid[i + 1][j][k].keep = true
+                  this.grid[i][j + 1][k].keep = true
+                }
               }
             }
-
-            const jRange = this.dRange(beta1, [linearRing[n], linearRing[n + 1]])
-            const jIntersection = this.linearSolver(beta1, beta)
-            for (let j = jRange.min; j <= jRange.max; j++) {
-              const intersection = jIntersection(j * this.step, d)
-              const i = Math.floor(this.dotProduct(beta0, intersection) / this.step)
-              const k = Math.floor(this.dotProduct(beta2, intersection) / this.step)
-              if (i - j + k === 1 || i - j + k === -1) {
-                this.grid[i][j][k].keep = true
-                this.grid[i + 1][j][k + 1].keep = true
-              } else {
-                this.grid[i + 1][j][k].keep = true
-                this.grid[i][j][k + 1].keep = true
-              }
-            }
-
-            const kRange = this.dRange(beta2, [linearRing[n], linearRing[n + 1]])
-            const kIntersection = this.linearSolver(beta2, beta)
-            for (let k = kRange.min; k <= kRange.max; k++) {
-              const intersection = kIntersection(k * this.step, d)
-              const i = Math.floor(this.dotProduct(beta0, intersection) / this.step)
-              const j = Math.floor(this.dotProduct(beta1, intersection) / this.step)
-              if (i - j + k === 1 || i - j + k === -1) {
-                this.grid[i][j][k].keep = true
-                this.grid[i + 1][j + 1][k].keep = true
-              } else {
-                this.grid[i + 1][j][k].keep = true
-                this.grid[i][j + 1][k].keep = true
-              }
-            }
-          }
+          })
         })
-      })
+      }
 
       const getIntersection = this.linearSolver(beta0, beta1)
 
@@ -258,7 +269,7 @@ class FishNet {
         include that grid cell in final output
       */
       const center = feature.properties.center
-      return this.data.some(polygon => {
+      return this.tempData.some(polygon => {
         if (center[0] < polygon.bbox[0]) return false
         if (center[1] < polygon.bbox[1]) return false
         if (center[0] > polygon.bbox[2]) return false
@@ -306,7 +317,7 @@ class FishNet {
      * =>
      * [{"coordinates":[[[108.620282,34.283929],[108.620282,34.37588],[108.759048,34.37588],[108.759048,34.283929],[108.620282,34.283929]]],"bbox":[108.620282,34.283929,108.759048,34.37588]}]
      */
-    this.data = this.data.map(coordinates => ({
+    this.tempData = this.tempData.map(coordinates => ({
       coordinates,
       bbox: [
         this.min(coordinates[0].map(point => point[0])),
@@ -320,11 +331,12 @@ class FishNet {
      * [108.620282,34.283929,108.759048,34.37588]
      */
     this.bbox = [
-      this.min(this.data.map(polygon => polygon.bbox[0])),
-      this.min(this.data.map(polygon => polygon.bbox[1])),
-      this.max(this.data.map(polygon => polygon.bbox[2])),
-      this.max(this.data.map(polygon => polygon.bbox[3]))
+      this.min(this.tempData.map(polygon => polygon.bbox[0])),
+      this.min(this.tempData.map(polygon => polygon.bbox[1])),
+      this.max(this.tempData.map(polygon => polygon.bbox[2])),
+      this.max(this.tempData.map(polygon => polygon.bbox[3]))
     ]
+    console.log("this.bbox",this.bbox)
   }
   updateOptions() {
     // 设置参数
@@ -335,6 +347,7 @@ class FishNet {
     this.options.width = Math.min(this.options.width, 500000)
     this.options.center = this.options.center || [(this.bbox[0] + this.bbox[2]) / 2, (this.bbox[1] + this.bbox[3]) / 2]
     this.options.projection = this.options.projection || this.equirectangular(this.options.center, this.options.width)
+    this.options.isCreateEdgeGrid = this.options.isCreateEdgeGrid || true // 是否生成边缘格网
   }
   bbox2geojson (bbox) {
     return {
@@ -350,9 +363,9 @@ class FishNet {
     if (node instanceof Array) {
       node.forEach(this.extractPolygons)
     } else if (node.type === 'Polygon') {
-      this.data.push(node.coordinates)
+      this.tempData.push(node.coordinates)
     } else if (node.type === 'MultiPolygon') {
-      this.data.push(...node.coordinates)
+      this.tempData.push(...node.coordinates)
     } else if (node.type === 'Feature') {
       console.log(JSON.stringify(this))
       this.extractPolygons(node.geometry)
