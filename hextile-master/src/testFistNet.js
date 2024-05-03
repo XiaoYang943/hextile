@@ -31,7 +31,7 @@ let featureCollection = {
 
 featureCollection.features = [...fishNet.getFishNet(),...data1.features]
 
-fs.writeFile('C:\\Users\\heyiyang\\Desktop\\data.geojson', JSON.stringify(featureCollection), 'utf8', (err) => {
+fs.writeFile('C:\\Users\\13522\\Desktop\\data.geojson', JSON.stringify(featureCollection), 'utf8', (err) => {
   if (err) {
     console.error('写入文件时发生错误:', err);
   } else {
