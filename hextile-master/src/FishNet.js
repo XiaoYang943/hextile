@@ -1,3 +1,5 @@
+import { bbox2geojson, isInside, linearSolver, max, min, polar2cartesian } from './utils.js'
+
 class FishNet {
   constructor (inputData,options) {
     this.options = options || {};
@@ -15,45 +17,28 @@ class FishNet {
     this.grid = {}
     this.calFishNet();
   }
-  polar2cartesian (theta) {
-    let radian = theta / 180 * Math.PI; // 角度转弧度
-    return [
-      Math.sin(radian),
-      -Math.cos(radian)
-    ]
-  }
-  dotProduct (v1, v2) {
-    return v1.reduce((sum, e, i) => sum + e * v2[i], 0)
+
+  dotProduct (beta, bbox) {
+    return beta.reduce((accumulator, currentValue, currentIndex) => accumulator + currentValue * bbox[currentIndex], 0)
   }
   /*
-    input:这个网格方向（beta）和一组潜在的端点，
+    input:网格方向（beta）和一组潜在的端点，
     output:最小值和最大值this.grid数（不包括极值）
   */
-  dRange (beta, endpoints) {
-    const dValues = endpoints.map(ep => this.dotProduct(beta, ep))
+  dRange (beta, bboxCartesian) {
+    const dValues = bboxCartesian.map(bbox => this.dotProduct(beta, bbox))
     return {
-      min: Math.floor(this.min(dValues) / this.step + 1),
-      max: Math.ceil(this.max(dValues) / this.step - 1)
+      min: Math.floor(min(dValues) / this.step + 1),
+      max: Math.ceil(max(dValues) / this.step - 1)
     }
   }
-  linearSolver ([alpha1, beta1], [alpha2, beta2]) {
-    const DET = alpha1 * beta2 - alpha2 * beta1 // x1y2 - x2y1
-    return function (d1, d2) {
-      return [
-        (beta2 * d1 - beta1 * d2) / DET,
-        (-alpha2 * d1 + alpha1 * d2) / DET
-      ]
-    }
-  }
+
   calFishNet() {
     if (this.options.shape === 'square') {
-      const beta0 = this.polar2cartesian(this.options.rotationAngle)  // [ 0, -1 ]
-      const beta1 = this.polar2cartesian(this.options.rotationAngle + 90) // [ 1, 0 ]
-      console.log(this.bboxCartesian)
+      const beta0 = polar2cartesian(this.options.rotationAngle)  // [ 0, -1 ]
+      const beta1 = polar2cartesian(this.options.rotationAngle + 90) // [ 1, 0 ]
       const dRange0 = this.dRange(beta0, this.bboxCartesian)
       const dRange1 = this.dRange(beta1, this.bboxCartesian)
-      console.log(dRange0)
-      console.log(dRange1)
       // 枚举所有潜在的网格单元
       for (let i = dRange0.min - 1; i <= dRange0.max + 1; i++) {
         this.grid[i] = {}
@@ -84,10 +69,7 @@ class FishNet {
                 linearRing[n][1] * linearRing[n + 1][0]
 
               const iRange = this.dRange(beta0, [linearRing[n], linearRing[n + 1]])
-              console.log("beta0",beta0)
-              console.log("beta",beta)
-
-              const iIntersection = this.linearSolver(beta0, beta)
+              const iIntersection = linearSolver(beta0, beta)
 
               for (let i = iRange.min; i <= iRange.max; i++) {
                 const intersection = iIntersection(i, d)
@@ -97,7 +79,7 @@ class FishNet {
               }
 
               const jRange = this.dRange(beta1, [linearRing[n], linearRing[n + 1]])
-              const jIntersection = this.linearSolver(beta1, beta)
+              const jIntersection = linearSolver(beta1, beta)
               for (let j = jRange.min; j <= jRange.max; j++) {
                 const intersection = jIntersection(j, d)
                 const i = Math.floor(this.dotProduct(beta0, intersection))
@@ -111,7 +93,7 @@ class FishNet {
 
 
       // translate this.grid cells into output polygons 将网格单元转换为输出多边形
-      const getIntersection = this.linearSolver(beta0, beta1)
+      const getIntersection = linearSolver(beta0, beta1)
 
       for (let _i in this.grid) {
         const i = +_i
@@ -139,9 +121,9 @@ class FishNet {
       }
     }
     else if (this.options.shape === 'hexagon') {
-      const beta0 = this.polar2cartesian(this.options.rotationAngle)
-      const beta1 = this.polar2cartesian(this.options.rotationAngle + 60)
-      const beta2 = this.polar2cartesian(this.options.rotationAngle + 120)
+      const beta0 = polar2cartesian(this.options.rotationAngle)
+      const beta1 = polar2cartesian(this.options.rotationAngle + 60)
+      const beta2 = polar2cartesian(this.options.rotationAngle + 120)
       const dRange0 = this.dRange(beta0, this.bboxCartesian)
       const dRange1 = this.dRange(beta1, this.bboxCartesian)
 
@@ -184,7 +166,7 @@ class FishNet {
               }
 
               const jRange = this.dRange(beta1, [linearRing[n], linearRing[n + 1]])
-              const jIntersection = this.linearSolver(beta1, beta)
+              const jIntersection = linearSolver(beta1, beta)
               for (let j = jRange.min; j <= jRange.max; j++) {
                 const intersection = jIntersection(j * this.step, d)
                 const i = Math.floor(this.dotProduct(beta0, intersection) / this.step)
@@ -199,7 +181,7 @@ class FishNet {
               }
 
               const kRange = this.dRange(beta2, [linearRing[n], linearRing[n + 1]])
-              const kIntersection = this.linearSolver(beta2, beta)
+              const kIntersection = linearSolver(beta2, beta)
               for (let k = kRange.min; k <= kRange.max; k++) {
                 const intersection = kIntersection(k * this.step, d)
                 const i = Math.floor(this.dotProduct(beta0, intersection) / this.step)
@@ -217,7 +199,7 @@ class FishNet {
         })
       }
 
-      const getIntersection = this.linearSolver(beta0, beta1)
+      const getIntersection = linearSolver(beta0, beta1)
 
       for (let _i in this.grid) {
         const i = +_i
@@ -275,8 +257,8 @@ class FishNet {
         if (center[0] > polygon.bbox[2]) return false
         if (center[1] > polygon.bbox[3]) return false
         const [outerRing, ...innerRings] = polygon.coordinates
-        return this.isInside(center, outerRing) &&
-          innerRings.every(innerRing => !this.isInside(center, innerRing))
+        return isInside(center, outerRing) &&
+          innerRings.every(innerRing => !isInside(center, innerRing))
       })
     })
 
@@ -287,25 +269,12 @@ class FishNet {
       linearRing.push(linearRing[0])
     })
   }
-  isInside ([lon, lat], linearRing) {
-    let isInside = false
-    for (let i = 1; i < linearRing.length; i++) {
-      const deltaYplus = linearRing[i][1] - lat
-      const deltaYminus = lat - linearRing[i - 1][1]
-      if (deltaYplus > 0 && deltaYminus <= 0) continue
-      if (deltaYplus < 0 && deltaYminus >= 0) continue
-      const deltaX = (deltaYplus * linearRing[i - 1][0] + deltaYminus * linearRing[i][0]) /
-        (deltaYplus + deltaYminus) - lon
-      if (deltaX <= 0) continue
-      isInside = !isInside
-    }
-    return isInside
-  }
+  
   processData(inputData) {
 
     if(inputData instanceof Array && inputData.length === 4 && inputData.every(v => typeof v === 'number')) {
       let geojson
-     geojson = this.bbox2geojson(inputData)
+     geojson = bbox2geojson(inputData)
       this.extractPolygons(geojson);
     } else {
       this.extractPolygons(inputData);
@@ -320,10 +289,10 @@ class FishNet {
     this.tempData = this.tempData.map(coordinates => ({
       coordinates,
       bbox: [
-        this.min(coordinates[0].map(point => point[0])),
-        this.min(coordinates[0].map(point => point[1])),
-        this.max(coordinates[0].map(point => point[0])),
-        this.max(coordinates[0].map(point => point[1]))
+        min(coordinates[0].map(point => point[0])),
+        min(coordinates[0].map(point => point[1])),
+        max(coordinates[0].map(point => point[0])),
+        max(coordinates[0].map(point => point[1]))
       ]
     }))
     // global bbox
@@ -331,17 +300,17 @@ class FishNet {
      * [108.620282,34.283929,108.759048,34.37588]
      */
     this.bbox = [
-      this.min(this.tempData.map(polygon => polygon.bbox[0])),
-      this.min(this.tempData.map(polygon => polygon.bbox[1])),
-      this.max(this.tempData.map(polygon => polygon.bbox[2])),
-      this.max(this.tempData.map(polygon => polygon.bbox[3]))
+      min(this.tempData.map(polygon => polygon.bbox[0])),
+      min(this.tempData.map(polygon => polygon.bbox[1])),
+      max(this.tempData.map(polygon => polygon.bbox[2])),
+      max(this.tempData.map(polygon => polygon.bbox[3]))
     ]
     console.log("this.bbox",this.bbox)
   }
   updateOptions() {
     // 设置参数
     this.options.shape = this.options.shape || 'square'
-    this.options.rotationAngle = this.options.rotationAngle || 0
+    this.options.rotationAngle = this.options.rotationAngle || 45
     this.options.width = this.options.width || 1000
     this.options.width = Math.max(this.options.width, 500)
     this.options.width = Math.min(this.options.width, 500000)
@@ -349,14 +318,7 @@ class FishNet {
     this.options.projection = this.options.projection || this.equirectangular(this.options.center, this.options.width)
     this.options.isCreateEdgeGrid = this.options.isCreateEdgeGrid || true // 是否生成边缘格网
   }
-  bbox2geojson (bbox) {
-    return {
-      type: 'Polygon',
-      coordinates: [
-        [[bbox[0], bbox[1]], [bbox[2], bbox[1]], [bbox[2], bbox[3]], [bbox[0], bbox[3]], [bbox[0], bbox[1]]]
-      ]
-    }
-  }
+  
   // 入参是geojson形式的bbox 
   extractPolygons (node) {
     if (typeof node !== 'object') return
@@ -383,31 +345,7 @@ class FishNet {
     return this.fishNetData;
   }
 
- max(arr) {
-    if (arr.length === 0) {
-      throw new Error('数组不能为空');
-    }
-    let max = arr[0];
-    for (let i = 1; i < arr.length; i++) {
-      if (arr[i] > max) {
-        max = arr[i];
-      }
-    }
-    return max;
-  }
 
- min(arr) {
-    if (arr.length === 0) {
-      throw new Error('数组不能为空');
-    }
-    let min = arr[0];
-    for (let i = 1; i < arr.length; i++) {
-      if (arr[i] < min) {
-        min = arr[i];
-      }
-    }
-    return min;
-  }
 
   /**
    * 等距投影
